@@ -1,0 +1,630 @@
+{
+   "AWSTemplateFormatVersion":"2010-09-09",
+   "Description":"This template creates required sample components to run Amazon Redshift configuration driven data lifecycle management automation.",
+   "Parameters":{
+      "S3BucketName":{
+         "Description":"Name of the existing S3 bucket to land the configuration file.",
+         "Default": "REPLACEBUCKETNAME",
+         "Type":"String",
+         "AllowedPattern":"^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$",
+         "ConstraintDescription":"Bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+      },
+      "ConfigurationFileKey":{
+         "Description":"Key of the redshift data lifecycle management configuration csv file.",
+         "Type":"String",
+         "Default": "redshift-data-lifecycle-manager/sample/test_configuration.csv"
+      },
+      "DynamoDBTableName":{
+         "Description":"Name of the Amazon DynamoDB table to host Amazon Redshift data lifecycle configuration.",
+         "Default": "rs-data-lc-config",
+         "Type":"String",
+         "MaxLength": "255",
+         "AllowedPattern":"[a-zA-Z0-9_.-]+",
+         "ConstraintDescription":"Table name can include numbers, lowercase letters, uppercase letters, underscore (_), dot (.) and hyphens (-). It cannot be more than 255 characters."
+      },
+      "DynamoDBTableProvisionedThroughputRCU":{
+         "Description":"Number of Read Capacity Units (RCU) for Amazon DynamoDB table which hosts Amazon Redshift data lifecycle configuration.",
+         "Type":"Number",
+         "MinValue": "1",
+         "Default": "20",
+         "ConstraintDescription":"Enter an integer value for number of RCUs"
+      },
+      "DynamoDBTableProvisionedThroughputWCU":{
+         "Description":"Number of Write Capacity Units (WCU) for Amazon DynamoDB table which hosts Amazon Redshift data lifecycle configuration.",
+         "Type":"Number",
+         "MinValue": "1",
+         "Default": "20",
+         "ConstraintDescription":"Enter an integer value for number of WCUs"
+      },
+     "RedshiftSSL":{
+      	"Description": "Is Redshift cluster SSL enabled. Value of requires_ssl in Redshift Parameter group",
+        "Default": "false",
+      	"Type": "String",
+        "AllowedValues": ["true","false"]
+     },
+      "RedshiftEndpointAddress":{
+      	"Description":"Amazon Redshift Endpoint Address without port and databasename.",
+         "Type":"String",
+         "AllowedPattern": ".*\\.redshift\\.amazonaws\\.com$"
+      },
+      "RedshiftEndpointPort":{
+      	"Description":"Amazon Redshift Endpoint Port.",
+         "Type":"Number",
+         "Default": "5439"
+      },
+      "RedshiftDatabaseName":{
+      	"Description":"Name of the Amazon Redshift Database.",
+         "Type":"String",
+         "AllowedPattern":"([a-z]|[0-9])+"
+      },
+      "RedshiftMasterUserName":{
+      	"Description": "The user name that is associated with the master user account for the cluster.",
+      	"Type": "String",
+      	"Default": "admin"
+      },
+      "RedshiftMasterPassword":{
+      	"Description": "The password that is associated with the master user account for the cluster.",
+      	"Type": "String",
+      	"NoEcho": "true"
+      },
+      "RedshiftSchemaName":{
+      	"Description": "Name of Redshift schema in which Redshift data lifecyle stored procedure will be created.",
+      	"Type": "String"
+      },
+      "RedshiftVPCId": {
+        "Default": "vpc",
+        "Description": "VPC ID in which Redshift cluster is hosted.",
+        "Type": "AWS::EC2::VPC::Id"
+        },
+      "RedshiftSubnetId": {
+        "Default": "subnet",
+        "Description": "Subnet in the VPC which hosts Redshift cluster.",
+        "Type": "AWS::EC2::Subnet::Id"
+        },
+      "RedshiftSecurityGroupIds": {
+        "Default": "mygroup1, mygroup2",
+        "Description": "Chose Redshift Security Groups.",
+        "Type": "List<AWS::EC2::SecurityGroup::Id>"
+        },
+      "RedshiftAvailabilityZoneId": {
+        "Default": "AZ",
+        "Description": "Availability Zone in which the redshift cluster is deployed.",
+        "Type": "AWS::EC2::AvailabilityZone::Name"
+        },
+      "RedshiftSelfReferencingSecurityGroupRule": {
+        "Default": "true",
+        "Description": "Select true to create self-referencing security group rule in Redshift ingress security group rule. This will allow AWS Glue to talk to Redshift. Chose false if it already exists.",
+        "AllowedValues": ["true","false"],
+        "Type": "String"
+        },
+      "GlueJobName":{
+      	"Description": "Name the AWS Glue job which manages Amazon Redshift data lifecycle based on configuration stored in DynamoDB table.",
+      	"Type": "String",
+        "MinLength": "5",
+      	"Default": "op_redshift_data_lc_management"
+      },
+      "GlueRedshiftConnectionFlag":{
+      	"Description": "Chose true to create a new Redshift connection in Glue. Chose false if it already exists and provide the name of the existing connection under GlueRedshiftConnectionName parameter.",
+      	"Type": "String",
+        "AllowedValues": ["true","false"],
+      	"Default": "false"
+      },
+      "GlueRedshiftConnectionName":{
+      	"Description": "If Redshift connection in Glue already exists, provide the name of the connection otherwise leave it blank.",
+      	"Type": "String"
+      },
+      "RedshiftSecretManagerFlag":{
+      	"Description": "Chose true to create a secret to securely access Amazon Redshift in AWS Secrets Manager. Chose false if it already exists and provide the name of the existing secret under RedshiftSecretManagerName parameter.",
+      	"Type": "String",
+        "AllowedValues": ["true","false"],
+      	"Default": "false"
+      },
+      "RedshiftSecretManagerName":{
+      	"Description": "If Redshift connection details in AWS Secrets Manager already exists, input the name of the secret here otherwise leave it blank.",
+      	"Type": "String"
+      },
+      "RedshiftSecretManagerEndpointFlag":{
+      	"Description": "Chose true to create a AWS Secrets Manager Endpoint. Chose false if it already exists.",
+      	"Type": "String",
+        "AllowedValues": ["true","false"],
+      	"Default": "false"
+      },
+      "S3VPCEndpointFlag":{
+      	"Description": "Chose true to create a S3 VPC Endpoint. Chose false if it already exists with VPC of your Redshift cluster.",
+      	"Type": "String",
+        "AllowedValues": ["true","false"],
+      	"Default": "false"
+      },
+      "DynamoDBVPCEndpointFlag":{
+      	"Description": "Chose true to create a Amazon DynamoDB VPC Endpoint. Chose false if it already exists with VPC of your Redshift cluster.",
+      	"Type": "String",
+        "AllowedValues": ["true","false"],
+      	"Default": "false"
+      },
+      "VPCRouteIDs": {
+        "Description": "Route ID list for S3 and DynamoDB VPC Endpoints. This is the route id associated with the VPC and subnet of Redshift cluster.",
+        "Type": "CommaDelimitedList"
+        }
+   },
+   "Metadata":{
+      "AWS::CloudFormation::Interface":{
+         "ParameterGroups":[
+            {
+               "Label":{
+                  "default":"S3"
+               },
+               "Parameters":["S3BucketName", "ConfigurationFileKey", "S3VPCEndpointFlag"]
+            },
+            {
+               "Label":{
+                  "default":"Dynamo DB"
+               },
+               "Parameters":["DynamoDBTableName", "DynamoDBTableProvisionedThroughputRCU", "DynamoDBTableProvisionedThroughputWCU", "DynamoDBVPCEndpointFlag"]
+            },
+            {
+            	"Label":{
+            		"default":"Redshift"
+            	},
+            	"Parameters": ["RedshiftSSL","RedshiftVPCId", "VPCRouteIDs", "RedshiftAvailabilityZoneId", "RedshiftSubnetId", "RedshiftSecurityGroupIds", "RedshiftSelfReferencingSecurityGroupRule", "RedshiftEndpointAddress", "RedshiftEndpointPort", "RedshiftDatabaseName", "RedshiftMasterUserName", "RedshiftMasterPassword", "RedshiftSchemaName"]
+            },
+            {
+            	"Label":{
+            		"default":"Glue"
+            	},
+            	"Parameters": ["GlueJobName", "GlueRedshiftConnectionFlag", "GlueRedshiftConnectionName"]
+            },
+            {
+            	"Label":{
+            		"default":"SecretsManager"
+            	},
+            	"Parameters": ["RedshiftSecretManagerFlag","RedshiftSecretManagerName","RedshiftSecretManagerEndpointFlag"]
+            }
+         ]
+      }
+   },
+   "Rules": {
+        "SubnetsInVPC": {
+            "Assertions": [
+                {
+                    "Assert": {
+                        "Fn::EachMemberIn": [{"Fn::ValueOfAll": ["AWS::EC2::Subnet::Id","VpcId"]},{"Fn::RefAll": "AWS::EC2::VPC::Id"}]
+                    },
+                    "AssertDescription": "Subnet must in the VPC"
+                }
+            ]
+        },
+        "SubnetsInAZ": {
+            "Assertions": [
+                {
+                    "Assert": {
+                        "Fn::EachMemberIn": [{"Fn::ValueOfAll": ["AWS::EC2::Subnet::Id","AvailabilityZone"]},{"Fn::RefAll": "AWS::EC2::AvailabilityZone::Name"}]
+                    },
+                    "AssertDescription": "Subnet must belong to Redshift AZ"
+                }
+            ]
+        }
+    },
+   "Conditions":{
+   	  "RedshiftSecretManagerCondition": {"Fn::Equals": [{"Ref": "RedshiftSecretManagerFlag"}, "true"]},
+   	  "RedshiftSecretManagerEndpointCondition": {"Fn::Equals": [{"Ref": "RedshiftSecretManagerEndpointFlag"}, "true"]},
+   	  "GlueRedshiftConnectionFlagCondition": {"Fn::Equals": [{"Ref": "GlueRedshiftConnectionFlag"}, "true"]},
+   	  "RedshiftSelfReferencingSecurityGroupRuleCondition": {"Fn::Equals": [{"Ref": "RedshiftSelfReferencingSecurityGroupRule"}, "true"]},
+   	  "S3VPCEndpointFlagCondition": {"Fn::Equals": [{"Ref": "S3VPCEndpointFlag"}, "true"]},
+   	  "DynamoDBVPCEndpointFlagCondition": {"Fn::Equals": [{"Ref": "DynamoDBVPCEndpointFlag"}, "true"]}
+   },
+   "Resources":{
+   	  "S3VPCEndpoint":{
+   	  	"Type": "AWS::EC2::VPCEndpoint",
+   	  	"Condition": "S3VPCEndpointFlagCondition",
+   	  	"Properties":{
+   	  		"PolicyDocument":{
+				 "Version":"2012-10-17",
+				 "Statement":[
+					{
+					   "Effect":"Allow",
+					   "Action":"*",
+					   "Resource":"*",
+					   "Principal": "*"
+					}
+				]
+			},
+			"RouteTableIds": {"Ref": "VPCRouteIDs"},
+			"ServiceName": {"Fn::Join": ["",["com.amazonaws.",{"Ref": "AWS::Region"}, ".s3"]]},
+			"VpcId": {"Ref": "RedshiftVPCId"}
+   	  	}
+   	  },
+   	  "DynamoDBVPCEndpoint":{
+   	  	"Type": "AWS::EC2::VPCEndpoint",
+   	  	"Condition": "DynamoDBVPCEndpointFlagCondition",
+   	  	"Properties":{
+   	  		"PolicyDocument":{
+				 "Version":"2012-10-17",
+				 "Statement":[
+					{
+					   "Effect":"Allow",
+					   "Action":"*",
+					   "Resource":"*",
+					   "Principal": "*"
+					}
+				]
+			},
+			"RouteTableIds": {"Ref": "VPCRouteIDs"},
+			"ServiceName": {"Fn::Join": ["",["com.amazonaws.",{"Ref": "AWS::Region"}, ".dynamodb"]]},
+			"VpcId": {"Ref": "RedshiftVPCId"}
+   	  	}
+   	  },
+   	  "RedshiftSelfReferencingSGRule":{
+   	  	"Type": "AWS::EC2::SecurityGroupIngress",
+   	  	"Condition": "RedshiftSelfReferencingSecurityGroupRuleCondition",
+   	  	"Properties":{
+   	  		"GroupId": {"Fn::Select": ["0", {"Ref": "RedshiftSecurityGroupIds"}]},
+   	  		"IpProtocol": "tcp",
+   	  		"SourceSecurityGroupId": {"Fn::Select": ["0", {"Ref": "RedshiftSecurityGroupIds"}]},
+   	  		"FromPort": 0,
+   	  		"ToPort": 65535,
+   	  		"Description": "Self-Referencing Rule"
+   	  	}
+   	  },
+     "S3StackBucketReadPolicy":{
+        "Type": "AWS::IAM::ManagedPolicy",
+        "DependsOn": ["RedshiftLambdaExecutionRole","GlueRedshiftDataLifecycleManagementRole"],
+        "Properties": {
+			"Description": "Policy for reading data from S3 bucket created by the stack",
+			"Path": "/",
+			"ManagedPolicyName": {"Fn::Join":["-",["S3StackBucketRead",{"Ref": "AWS::StackName"}]]},
+			"PolicyDocument": {
+				"Version": "2012-10-17",
+				"Statement":[
+							{
+							   "Effect":"Allow",
+							   "Action":[
+									"s3:Get*",
+									"s3:List*"
+								],
+							   "Resource":[
+									{"Fn::Join": ["",["arn:aws:s3:::",{"Ref": "S3BucketName"}]]},
+									{"Fn::Join": ["",["arn:aws:s3:::",{"Ref": "S3BucketName"},"/*"]]}
+							   ]
+							}
+						]
+					},
+					"Roles": [{"Ref": "RedshiftLambdaExecutionRole"}, {"Ref": "DynamoDBLambdaExecutionRole"}, {"Ref": "GlueRedshiftDataLifecycleManagementRole"}]
+            }
+      },
+     "DynamoDBPolicy":{
+        "Type": "AWS::IAM::ManagedPolicy",
+        "DependsOn":"GlueRedshiftDataLifecycleManagementRole",
+        "Properties": {
+			"Description": "Policy for reading configuration from DynamoDB and updating checkpoint",
+			"Path": "/",
+			"ManagedPolicyName": {"Fn::Join":["-",["DynamoDB",{"Ref": "AWS::StackName"}]]},
+			"PolicyDocument": {
+				"Version": "2012-10-17",
+				"Statement": [
+					{
+                      "Sid": "ListAndDescribe",
+                      "Effect": "Allow",
+                      "Action": [
+                        "dynamodb:List*"
+                      ],
+                      "Resource": "*"
+                    },
+                    {
+                      "Sid": "SpecificTable",
+                      "Effect": "Allow",
+                      "Action": [
+                        "dynamodb:BatchGet*",
+                        "dynamodb:DescribeTable",
+                        "dynamodb:Get*",
+                        "dynamodb:Query",
+                        "dynamodb:Scan",
+                        "dynamodb:BatchWrite*",
+                        "dynamodb:Update*",
+                        "dynamodb:PutItem"
+                      ],
+                      "Resource": {"Fn::Join": ["",["arn:aws:dynamodb:",{"Ref": "AWS::Region"},":",{"Ref": "AWS::AccountId"},":table/",{"Ref": "DynamoDBTableName"}]]}
+                    }
+                ]
+			},
+			"Roles": [{"Ref": "GlueRedshiftDataLifecycleManagementRole"}]
+            }
+      },
+     "SecretManagerReadOnlyPolicy": {
+        "Type": "AWS::IAM::ManagedPolicy",
+        "DependsOn":"RedshiftLambdaExecutionRole",
+        "Properties": {
+			"Description": "Policy for reading Secrets Manager secret which holds Redshift credentials",
+			"Path": "/",
+			"ManagedPolicyName": {"Fn::Join":["-",["SecretManagerReadOnly",{"Ref": "AWS::StackName"}]]},
+			"PolicyDocument": {
+				"Version": "2012-10-17",
+				"Statement": [
+					{
+						"Effect": "Allow",
+						"Action": "secretsmanager:GetSecretValue",
+						"Resource": {"Fn::If": ["RedshiftSecretManagerCondition", {"Ref":"RedshiftSecretManager"}, {"Fn::Join": ["",["arn:aws:secretsmanager:",{"Ref": "AWS::Region"},":",
+                          {"Ref": "AWS::AccountId"},":secret:",{"Ref": "RedshiftSecretManagerName"},"*"]]}]}
+                    }
+				]
+			},
+			"Roles": [{"Ref": "RedshiftLambdaExecutionRole"},{"Ref": "GlueRedshiftDataLifecycleManagementRole"}]
+            }
+      },
+      "GlueRedshiftDataLifecycleManagementRole": {
+      	"Type": "AWS::IAM::Role",
+      	"Properties":{
+      		"AssumeRolePolicyDocument":{
+               "Version":"2012-10-17",
+               "Statement":[
+                  {
+                     "Effect":"Allow",
+                     "Principal":{
+                        "Service":[
+                           "glue.amazonaws.com"
+                        ]
+                     },
+                     "Action":[
+                        "sts:AssumeRole"
+                     ]
+                  }
+               ]
+            },
+            "Path": "/",
+            "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"],
+            "RoleName": {"Fn::Join":["-",["Glue",{"Ref":"AWS::Region"},{"Ref": "AWS::StackName"},"Role"]]},
+            "Description": "Allows Glue to call AWS services on your behalf"
+      	}
+      },
+       "RedshiftUnloadRole": {
+      	"Type": "AWS::IAM::Role",
+      	"Properties":{
+      		"AssumeRolePolicyDocument":{
+               "Version":"2012-10-17",
+               "Statement":[
+                  {
+                     "Effect":"Allow",
+                     "Principal":{
+                        "Service":[
+                           "redshift.amazonaws.com"
+                        ]
+                     },
+                     "Action":[
+                        "sts:AssumeRole"
+                     ]
+                  }
+               ]
+            },
+            "Path": "/",
+            "Policies":[
+               {
+                  "PolicyName": {"Fn::Join": ["-",["RedshiftUnload",{"Ref":"AWS::Region"},{"Ref": "AWS::StackName"},"Policy"]]},
+                  "PolicyDocument":{
+                     "Version":"2012-10-17",
+                     "Statement":[
+                        {
+							"Sid": "SpecificTable",
+							"Effect": "Allow",
+							"Action": [
+								"s3:PutObject"
+							],
+							"Resource": "*"
+						  }
+                      ]
+                  }
+               }
+            ],
+            "RoleName": {"Fn::Join":["-",["RedshiftUnload",{"Ref":"AWS::Region"},{"Ref": "AWS::StackName"},"Role"]]},
+            "Description": "Allows Redshift to interact with other AWS services"
+      	}
+      },
+      "DynamoDBLambdaExecutionRole":{
+         "Type":"AWS::IAM::Role",
+         "Properties":{
+         	"AssumeRolePolicyDocument":{
+               "Version":"2012-10-17",
+               "Statement":[
+                  {
+                     "Effect":"Allow",
+                     "Principal":{
+                        "Service":[
+                           "lambda.amazonaws.com"
+                        ]
+                     },
+                     "Action":[
+                        "sts:AssumeRole"
+                     ]
+                  }
+               ]
+            },
+            "RoleName":{"Fn::Join":["-",["csv-DynamoDB",{"Ref":"AWS::Region"},{"Ref": "AWS::StackName"},"Role"]]},
+            "Path":"/",
+            "Policies":[
+               {
+                  "PolicyName": {"Fn::Join": ["-",["LamdbaDynamoDBCreateWritePolicy",{"Ref":"AWS::Region"},{"Ref": "AWS::StackName"}]]},
+                  "PolicyDocument":{
+                     "Version":"2012-10-17",
+                     "Statement":[
+                        {
+							"Sid": "SpecificTable",
+							"Effect": "Allow",
+							"Action": [
+								"dynamodb:CreateTable",
+								"dynamodb:DescribeTable",
+								"dynamodb:PutItem",
+								"dynamodb:BatchWriteItem"
+							],
+							"Resource": {"Fn::Join":["",["arn:aws:dynamodb:*:*:table/",{"Ref":"DynamoDBTableName"}]]}
+						  }
+                      ]
+                  }
+               }
+            ],
+            "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole","arn:aws:iam::aws:policy/AWSLambdaInvocation-DynamoDB"]
+         }
+      },
+      "CSVDyDBWriterLambda":{
+         "Type":"AWS::Lambda::Function",
+         "DependsOn": "DynamoDBLambdaExecutionRole",
+         "Properties":{
+            "FunctionName":"csv-DynamoDB-Redshift-data-lc-management-config-writer",
+            "Description":"Creates dynamoDB configuration table, if it doesn't exist and writes the redshift data lifecycle management configuration to the DynamoDB table",
+            "Handler":"dynamo_writer.lambda_handler",
+            "Runtime":"python3.7",
+            "Timeout":900,
+            "Role":{
+               "Fn::GetAtt":["DynamoDBLambdaExecutionRole","Arn"]},
+            "Code":{
+               "S3Bucket":{"Ref": "S3BucketName"},
+               "S3Key":"redshift-data-lifecycle-manager/config/csv_dydb_writer.zip"
+            },
+            "Environment":{
+               "Variables":{
+                  "BUCKET":{"Ref": "S3BucketName"},
+                  "KEY": {"Ref": "ConfigurationFileKey"},
+                  "TABLE_NAME": {"Ref": "DynamoDBTableName"},
+                  "RCU": {"Ref": "DynamoDBTableProvisionedThroughputRCU"},
+                  "WCU": {"Ref": "DynamoDBTableProvisionedThroughputWCU"}
+               }
+            }
+         }
+      },
+      "RedshiftLambdaExecutionRole":{
+         "Type":"AWS::IAM::Role",
+         "Properties":{
+            "AssumeRolePolicyDocument":{
+               "Version":"2012-10-17",
+               "Statement":[
+                  {
+                     "Effect":"Allow",
+                     "Principal":{
+                        "Service":["lambda.amazonaws.com"]
+                     },
+                     "Action":["sts:AssumeRole"]
+                  }
+               ]
+            },
+            "RoleName":{"Fn::Join":["-",["RedshiftLambdaExecution",{"Ref":"AWS::Region"},{"Ref": "AWS::StackName"},"Role"]]},
+            "Path":"/",
+            "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"]
+         }
+      },
+      "RedshiftDDLLambda":{
+         "Type":"AWS::Lambda::Function",
+         "DependsOn": ["SecretManagerReadOnlyPolicy","RedshiftLambdaExecutionRole","SecretManagerReadOnlyPolicy"],
+         "Properties":{
+            "FunctionName":"RedshiftDataLCManagementProcedureCreation",
+            "Description":"Execute DDLs on Redshift",
+            "Handler":"redshift_manager.lambda_handler",
+            "Runtime":"python3.7",
+            "Timeout":60,
+            "Role":{
+               "Fn::GetAtt":["RedshiftLambdaExecutionRole","Arn"]},
+            "Code":{
+               "S3Bucket":{"Ref":"S3BucketName"},
+               "S3Key":"redshift-data-lifecycle-manager/config/redshiftProcedureCreation.zip"
+            },
+            "Environment":{
+               "Variables":{
+                  "sqlScriptKey": "redshift-data-lifecycle-manager/config/Redshift_Data_LifecycleManagement_SP.sql",
+                  "ConfigBucket": {"Ref":"S3BucketName"},
+                  "redshiftSSL": {"Ref": "RedshiftSSL"},
+                  "redshiftSecretName": {"Fn::If": ["RedshiftSecretManagerCondition", {"Ref":"RedshiftSecretManager"}, {"Ref":"RedshiftSecretManagerName"}]},
+                  "redshiftSchemaName": {"Ref":"RedshiftSchemaName"}
+               }
+            },
+            "VpcConfig":{
+            	"SecurityGroupIds": {"Ref": "RedshiftSecurityGroupIds"},
+            	"SubnetIds": [{"Ref": "RedshiftSubnetId"}]
+            }
+         }
+      },
+      "RedshiftSecretManager":{
+      	"Type": "AWS::SecretsManager::Secret",
+      	"Condition": "RedshiftSecretManagerCondition",
+      	"Properties":{
+      		"Name": {"Fn::Join":["-",["RedshiftConnection",{"Ref":"AWS::Region"},{"Ref": "AWS::StackName"}]]},
+      		"Description": "Secret for Redshift connection parameters",
+      		"SecretString": {"Fn::Join": ["",["{\"username\":\"",{"Ref":"RedshiftMasterUserName"},"\",\"password\":\"",{"Ref":"RedshiftMasterPassword"},"\",\"engine\":\"redshift\",\"host\":\"",{"Ref":"RedshiftEndpointAddress"},"\",\"port\":",{"Ref":"RedshiftEndpointPort"},",\"database\":\"",{"Ref": "RedshiftDatabaseName"},"\"}"]]
+      		}
+      	}
+      },
+      "SecretsManagerVPCEndpoint":{
+   	  	"Type": "AWS::EC2::VPCEndpoint",
+   	  	"Condition": "RedshiftSecretManagerEndpointCondition",
+   	  	"Properties":{
+   	  		"PolicyDocument":{
+				 "Version":"2012-10-17",
+				 "Statement":[
+					{
+					   "Effect":"Allow",
+					   "Action":"*",
+					   "Resource":"*",
+					   "Principal": "*"
+					}
+				]
+			},
+			"SubnetIds": [{"Ref": "RedshiftSubnetId"}],
+			"SecurityGroupIds": {"Ref": "RedshiftSecurityGroupIds"},
+			"VpcEndpointType": "Interface",
+			"ServiceName": {"Fn::Join": ["",["com.amazonaws.",{"Ref": "AWS::Region"}, ".secretsmanager"]]},
+			"VpcId": {"Ref": "RedshiftVPCId"},
+			"PrivateDnsEnabled" : true
+   	  	}
+   	  },
+	  "RedshiftGlueConnection":{
+	  	"Type" : "AWS::Glue::Connection",
+	  	"Condition": "GlueRedshiftConnectionFlagCondition",
+	  	"Properties" :{
+	  		"CatalogId" : {"Ref": "AWS::AccountId"},
+	  		"ConnectionInput":{
+	  			 "Name": {"Fn::Join": ["-", ["redshift", {"Ref": "AWS::StackName"}]]},
+	  			 "Description": "Connect to VPC where Redshift is running",
+	  			 "ConnectionType": "JDBC",
+	  			 "ConnectionProperties":{
+	  			 	"JDBC_CONNECTION_URL": {"Fn::Join": ["", ["jdbc:redshift://",{"Ref":"RedshiftEndpointAddress"},":",{"Ref":"RedshiftEndpointPort"}, "/", {"Ref": "RedshiftDatabaseName"} ]]},
+          			"USERNAME": {"Ref":"RedshiftMasterUserName"},
+         			"PASSWORD": {"Ref":"RedshiftMasterPassword"}
+	  			 },
+	  			 "PhysicalConnectionRequirements":{
+	  			 	"SecurityGroupIdList": {"Ref": "RedshiftSecurityGroupIds"},
+	  			 	"SubnetId": {"Ref": "RedshiftSubnetId"},
+	  			 	"AvailabilityZone": {"Ref": "RedshiftAvailabilityZoneId"}
+	  			 }
+	  		}
+	  	}
+	  },
+	  "GluePythonRedshiftDataLifecycleManagementJob": {
+	  	"Type": "AWS::Glue::Job",
+	  	"Properties": {
+	  		"Command": {
+          		"Name": "pythonshell",
+          		"PythonVersion": "3",
+          		"ScriptLocation": {"Fn::Join": ["",["s3://",{"Ref":"S3BucketName"},"/redshift-data-lifecycle-manager/config/management_job.py"]]}
+        	},
+        	"Connections": {
+        		"Connections":
+        			[{"Fn::If": ["GlueRedshiftConnectionFlagCondition", {"Ref":"RedshiftGlueConnection"}, {"Ref":"GlueRedshiftConnectionName"}]}]
+        	},
+        	"DefaultArguments": {
+        		"--TempDir": {"Fn::Join": ["",["s3://aws-glue-temporary-",{"Ref": "AWS::AccountId"}, "-", {"Ref": "AWS::Region"}]]},
+          		"--job-bookmark-option": "job-bookmark-disable",
+          		"--role_arn":{"Fn::GetAtt":["RedshiftUnloadRole","Arn"]},
+          		"--region_name":{"Ref": "AWS::Region"},
+          		"--secret": {"Fn::If": ["RedshiftSecretManagerCondition", {"Ref":"RedshiftSecretManager"}, {"Ref":"RedshiftSecretManagerName"}]},
+          		"--redshift_schema": {"Ref": "RedshiftSchemaName"},
+          		"--dynamodb_table_name": {"Ref": "DynamoDBTableName"},
+                "--extra-py-files": {"Fn::Join": ["",["s3://",{"Ref":"S3BucketName"},"/redshift-data-lifecycle-manager/config/validator-0.1-py3.6.egg"]]}
+        	},
+        	"GlueVersion": "1.0",
+        	"MaxCapacity": 0.0625,
+        	"MaxRetries": 0,
+        	"ExecutionProperty": {
+          		"MaxConcurrentRuns": 2
+        	},
+        	"Role": {"Fn::GetAtt":["GlueRedshiftDataLifecycleManagementRole","Arn"]},
+        	"Name": {"Ref": "GlueJobName"},
+        	"Description": "Manages Amazon Redshift data lifecycle based on configuration stored in DynamoDB table"
+	  	}
+	  }
+   }
+}

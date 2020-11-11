@@ -1,0 +1,5 @@
+﻿schema_name,table_name,column_name,granularity_level,retention_period,s3_path,file_format,partition_column,header,delimiter,add_quotes,null_as,escape,compression,max_filesize,parallel,unload_region,priority,update_delete_flag,checkpoint
+test,ret_test_1,load_date,daily,90,s3://redshift-data-test-vikas/ret_test_1,PARQUET,load_date,,,,,,,1 gb,,,10,2,
+test,ret_test_2,load_date,daily,90,s3://redshift-data-test-vikas/ret_test_2,PARQUET,load_date,,,,,,,1 gb,,,10,2,
+test,ret_test_3,load_date,daily,90,s3://redshift-data-test-vikas/ret_test_3,PARQUET,load_date,,,,,,,1 gb,,,10,2,
+test,ret_test_4,load_date,monthly,3,s3://redshift-data-test-vikas/ret_test_4,PARQUET,load_date,,,,,,,1 gb,,us-east-1,10,2,
