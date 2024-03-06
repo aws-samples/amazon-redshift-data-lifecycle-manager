@@ -26,8 +26,6 @@ This repository contains an implementation example of configuration driven Amazo
     - [AWS Glue Job](#aws-glue-job)
   - [Clean Up](#clean-up)
 
-
-
 ## Context
 
 [Amazon **Redshift**](https://aws.amazon.com/redshift/) powers the **lake-house architecture** – enabling you to query data across your data warehouse, data lake, and operational databases to gain faster and deeper insights. With a **lake-house architecture**, you can store data in open file formats in your Amazon S3 data lake. Unloading data from Amazon Redshift cluster to Amazon S3 in open file format may be required due to a variety of reasons. Ex:
