@@ -469,7 +469,7 @@
             "FunctionName":"csv-DynamoDB-Redshift-data-lc-management-config-writer",
             "Description":"Creates dynamoDB configuration table, if it doesn't exist and writes the redshift data lifecycle management configuration to the DynamoDB table",
             "Handler":"dynamo_writer.lambda_handler",
-            "Runtime":"python3.7",
+            "Runtime":"python3.10",
             "Timeout":900,
             "Role":{
                "Fn::GetAtt":["DynamoDBLambdaExecutionRole","Arn"]},
@@ -515,7 +515,7 @@
             "FunctionName":"RedshiftDataLCManagementProcedureCreation",
             "Description":"Execute DDLs on Redshift",
             "Handler":"redshift_manager.lambda_handler",
-            "Runtime":"python3.7",
+            "Runtime":"python3.10",
             "Timeout":60,
             "Role":{
                "Fn::GetAtt":["RedshiftLambdaExecutionRole","Arn"]},
